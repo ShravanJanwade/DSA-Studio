@@ -1,90 +1,179 @@
-# React + Vite + Hono + Cloudflare Workers
+# DSA Studio — Interview Prep Platform
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/cloudflare/templates/tree/main/vite-react-template)
+A professional DSA cheat sheet and study platform with interactive visualizations, smart file parsing, and Supabase backend.
 
-This template provides a minimal setup for building a React application with TypeScript and Vite, designed to run on Cloudflare Workers. It features hot module replacement, ESLint integration, and the flexibility of Workers deployments.
+## Quick Setup
 
-![React + TypeScript + Vite + Cloudflare Workers](https://imagedelivery.net/wSMYJvS3Xw-n339CbDyDIA/fc7b4b62-442b-4769-641b-ad4422d74300/public)
+### 1. Create Supabase Project
+- Go to [supabase.com](https://supabase.com) → New Project
+- Copy your **Project URL** and **anon public key** from Settings → API
 
-<!-- dash-content-start -->
+### 2. Run Database Schema
+- Go to SQL Editor in your Supabase dashboard
+- Copy and run the entire contents of `supabase-schema.sql`
 
-🚀 Supercharge your web development with this powerful stack:
-
-- [**React**](https://react.dev/) - A modern UI library for building interactive interfaces
-- [**Vite**](https://vite.dev/) - Lightning-fast build tooling and development server
-- [**Hono**](https://hono.dev/) - Ultralight, modern backend framework
-- [**Cloudflare Workers**](https://developers.cloudflare.com/workers/) - Edge computing platform for global deployment
-
-### ✨ Key Features
-
-- 🔥 Hot Module Replacement (HMR) for rapid development
-- 📦 TypeScript support out of the box
-- 🛠️ ESLint configuration included
-- ⚡ Zero-config deployment to Cloudflare's global network
-- 🎯 API routes with Hono's elegant routing
-- 🔄 Full-stack development setup
-- 🔎 Built-in Observability to monitor your Worker
-
-Get started in minutes with local development or deploy directly via the Cloudflare dashboard. Perfect for building modern, performant web applications at the edge.
-
-<!-- dash-content-end -->
-
-## Getting Started
-
-To start a new project with this template, run:
-
+### 3. Configure Environment
 ```bash
-npm create cloudflare@latest -- --template=cloudflare/templates/vite-react-template
+cp .env.example .env
+# Edit .env with your Supabase URL and key
 ```
 
-A live deployment of this template is available at:
-[https://react-vite-template.templates.workers.dev](https://react-vite-template.templates.workers.dev)
-
-## Development
-
-Install dependencies:
-
+### 4. Install & Run
 ```bash
 npm install
-```
-
-Start the development server with:
-
-```bash
 npm run dev
 ```
 
-Your application will be available at [http://localhost:5173](http://localhost:5173).
+---
 
-## Production
+## Architecture
 
-Build your project for production:
-
-```bash
-npm run build
+```
+src/
+├── App.jsx                          # Root: state, routing, Supabase orchestration
+├── main.jsx                         # React entry point
+├── index.css                        # Tailwind + global styles
+├── lib/
+│   ├── supabase.js                  # Supabase client + all CRUD operations
+│   ├── parser.js                    # Smart file parser (md, html, xlsx)
+│   ├── tokenizer.js                 # Java syntax tokenizer
+│   └── constants.js                 # Design tokens, status/difficulty configs
+├── components/
+│   ├── Sidebar.jsx                  # Topic tree, search, progress stats
+│   ├── ProblemView.jsx              # Main study view with split panels
+│   ├── ui/
+│   │   └── Primitives.jsx           # Button, Modal, Input, Select, Badge
+│   ├── panels/
+│   │   ├── CodePanel.jsx            # Syntax-highlighted code with line numbers
+│   │   ├── MarkdownRenderer.jsx     # Markdown → React elements
+│   │   └── Widgets.jsx              # Timer, Viz iframe, Hints, Complexity chart
+│   └── editors/
+│       └── ProblemEditor.jsx        # Create/edit modal + bulk upload modal
 ```
 
-Preview your build locally:
+---
 
-```bash
-npm run preview
+## File Upload Formats
+
+### Single Problem (Markdown)
+
+Use headings to mark sections. The parser detects approach type from heading text:
+
+```markdown
+# Problem Name
+
+**Difficulty:** Hard
+**LeetCode:** https://leetcode.com/problems/...
+
+## Description
+Problem statement here...
+
+## In-depth Explanation
+Detailed walkthrough of what the problem is really asking...
+
+## Brute Force Intuition
+Why this approach works...
+
+## Brute Force In-depth Intuition
+Deep dive with examples...
+
+## Brute Force Algorithm
+```pseudocode
+step by step...
 ```
 
-Deploy your project to Cloudflare Workers:
-
-```bash
-npm run build && npm run deploy
+## Brute Force Code
+```java
+// your code
 ```
 
-Monitor your workers:
+## Brute Force Complexity
+Time: O(n^2)
+Space: O(n)
 
-```bash
-npx wrangler tail
+## Brute Force Hints
+- First hint
+- Second hint
+
+## Optimal Intuition
+...
+
+## Optimal Code
+```java
+// optimized code
+```
 ```
 
-## Additional Resources
+### Bulk Upload (Multiple Problems)
 
-- [Cloudflare Workers Documentation](https://developers.cloudflare.com/workers/)
-- [Vite Documentation](https://vitejs.dev/guide/)
-- [React Documentation](https://reactjs.org/)
-- [Hono Documentation](https://hono.dev/)
+Separate problems with `---`:
+
+```markdown
+# Two Sum
+## Description
+...
+## Brute Force Code
+...
+---
+# Three Sum
+## Description
+...
+## Optimal Code
+...
+```
+
+### Excel Upload
+
+Columns (case-insensitive, underscores optional):
+
+| name | difficulty | description | brute_intuition | brute_code | brute_time | optimal_intuition | optimal_code | optimal_time |
+|------|-----------|-------------|-----------------|------------|------------|-------------------|--------------|--------------|
+
+### HTML Visualization
+
+Upload `.html` files directly — they render in a sandboxed iframe. The HTML should be self-contained with inline CSS/JS.
+
+---
+
+## Database Schema
+
+| Table | Purpose |
+|-------|---------|
+| `topics` | Top-level categories (Graphs, DP, Arrays) |
+| `subtopics` | Sub-categories within topics |
+| `problems` | Individual problems with metadata |
+| `solutions` | Approach variants (Brute/Better/Optimal) per problem |
+| `hints` | Progressive hints per solution |
+
+---
+
+## Problem Fields
+
+Each problem supports:
+- **Description**: What the problem asks
+- **In-depth Explanation**: Detailed walkthrough of what to do and why
+- **Solutions** (1-3 per problem):
+  - **Intuition**: Core idea in brief
+  - **In-depth Intuition**: Deep dive with examples
+  - **Algorithm**: Pseudocode / steps
+  - **Code**: Syntax-highlighted Java (or any language)
+  - **Visualization HTML**: Interactive dry-run widget
+  - **Hints**: Progressive reveal (click to show)
+  - **Time/Space Complexity**: With visual comparison chart
+
+---
+
+## Key Features
+
+- **Interview Timer**: Configurable countdown (15-60 min) with visual progress
+- **Smart File Parsing**: Auto-detects sections, approach types, URLs, difficulty
+- **Bulk Upload**: Upload entire subtopic's worth of problems from one file
+- **Syntax Highlighting**: Proper tokenizer for Java (keywords, types, strings, numbers, comments)
+- **Markdown Rendering**: Full block-level parser rendered as React elements (no innerHTML)
+- **Visualization Sandbox**: Any HTML renders in a secure iframe
+- **Progress Tracking**: Status per problem with visual stats
+- **Complexity Charts**: Log-scale area chart comparing approaches
+
+## License
+
+MIT
