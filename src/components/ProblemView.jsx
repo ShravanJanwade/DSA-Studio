@@ -349,7 +349,7 @@ export default function ProblemView({
           {activeTab === 'dryrun' && (
             <div style={{ padding: 20, height: '100%', display: 'flex', flexDirection: 'column' }}>
               {sol?.visualization_html || sol?.code ? (
-                <div style={{ flex: 1 }}>
+                <div style={{ flex: 1, minHeight: 0 }}>
                   <VizSection
                     vizHtml={sol.visualization_html}
                     code={sol.code}

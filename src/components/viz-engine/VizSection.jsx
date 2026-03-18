@@ -6,18 +6,18 @@ import VizEngine from '@/components/viz-engine/VizEngine';
 export default function VizSection({ vizHtml, code, intuition, stepsText, approachType }) {
   const [tab, setTab] = useState(vizHtml ? 'html' : 'engine');
   return (
-    <div>
-      <div style={{ display: 'flex', gap: 4, marginBottom: 10 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div style={{ display: 'flex', gap: 4, marginBottom: 10, flexShrink: 0 }}>
         {vizHtml && <TabBtn active={tab === 'html'} onClick={() => setTab('html')} icon={Eye} label="Uploaded Viz" />}
         <TabBtn active={tab === 'engine'} onClick={() => setTab('engine')} icon={Cpu} label="Viz Engine" />
       </div>
       {tab === 'html' && vizHtml && (
-        <div style={{ background: '#0e0e12', borderRadius: 10, border: '1px solid rgba(255,255,255,0.05)', overflow: 'hidden' }}>
+        <div style={{ background: '#0e0e12', borderRadius: 10, border: '1px solid rgba(255,255,255,0.05)', overflow: 'hidden', flex: 1 }}>
           <VizPanel html={vizHtml} />
         </div>
       )}
       {tab === 'engine' && (
-        <div style={{ background: '#0e0e12', borderRadius: 12, border: '1px solid rgba(255,255,255,0.05)', padding: 16 }}>
+        <div style={{ background: '#0e0e12', borderRadius: 12, border: '1px solid rgba(255,255,255,0.05)', padding: 16, flex: 1, overflowY: 'auto' }}>
           <VizEngine code={code} intuition={intuition} stepsText={stepsText} approachType={approachType} />
         </div>
       )}
