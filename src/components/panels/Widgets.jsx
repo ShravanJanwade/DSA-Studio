@@ -91,7 +91,7 @@ export function VizPanel({ html }) {
   return (
     <>
       {/* Inline preview with expand button */}
-      <div style={{ position: 'relative' }}>
+      <div style={{ position: 'relative', height: '100%', display: 'flex', flexDirection: 'column' }}>
         <div style={{
           position: 'absolute', top: 12, right: 12, zIndex: 5,
           display: 'flex', gap: 6,
@@ -117,8 +117,7 @@ export function VizPanel({ html }) {
           ref={inlineRef}
           srcDoc={iframeDoc}
           sandbox="allow-scripts"
-          style={{ width: '100%', border: 'none', borderRadius: 8, background: '#111114', minHeight: 400 }}
-          onLoad={() => resizeIframe(inlineRef)}
+          style={{ width: '100%', flex: 1, border: 'none', borderRadius: 8, background: '#111114' }}
         />
       </div>
 
