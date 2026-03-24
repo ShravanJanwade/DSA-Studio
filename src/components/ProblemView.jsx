@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  BookOpen, PenTool, BarChart3, Edit2, ExternalLink, ArrowUpRight,
-  Lightbulb, List, Eye, Code2, Info, Layers, Footprints,
-  Youtube, Maximize2, Minimize2, X, SplitSquareHorizontal, PanelLeftClose,
-  ChevronLeft, ChevronRight, Keyboard, Sparkles, Zap,
+  BookOpen, PenTool, BarChart3, Edit2, ExternalLink,
+  Lightbulb, List, Eye, Code2, Info, Footprints,
+  Youtube, Keyboard, Sparkles, Zap, ChevronLeft, ChevronRight,
+  Maximize2, X, Video,
 } from 'lucide-react';
 import { IconButton, DifficultyBadge, Select } from '@/components/ui/Primitives';
 import CodePanel from '@/components/panels/CodePanel';
@@ -15,20 +15,27 @@ import DSTemplates from '@/components/panels/DSTemplates';
 import { STATUSES, APPROACHES } from '@/lib/constants';
 import VizSection from '@/components/viz-engine/VizSection';
 
-// ═══ TAB DEFINITIONS ═══
+// ── Helper ──
+function getYoutubeId(url) {
+  if (!url) return null;
+  const m = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([\w-]{11})/);
+  return m ? m[1] : null;
+}
+
+// ── TAB DEFINITIONS ──
 const TABS = [
-  { key: 'video', label: 'Video', icon: Youtube, shortcut: '1', color: '#f87171' },
-  { key: 'problem', label: 'Problem', icon: BookOpen, shortcut: '2', color: '#4f8ff7' },
-  { key: 'intuition', label: 'Intuition', icon: Lightbulb, shortcut: '3', color: '#fbbf24' },
-  { key: 'steps', label: 'Steps', icon: Footprints, shortcut: '4', color: '#a78bfa' },
-  { key: 'algorithm', label: 'Algorithm', icon: List, shortcut: '5', color: '#4f8ff7' },
-  { key: 'code', label: 'Code', icon: Code2, shortcut: '6', color: '#34d399' },
-  { key: 'dryrun', label: 'Dry Run', icon: Eye, shortcut: '7', color: '#a78bfa' },
-  { key: 'notes', label: 'Notes', icon: PenTool, shortcut: '8', color: '#fb923c' },
-  { key: 'complexity', label: 'Complexity', icon: BarChart3, shortcut: '9', color: '#22d3ee' },
+  { key: 'video',      label: 'Video',      icon: Youtube,    shortcut: '1', color: '#f87171' },
+  { key: 'problem',    label: 'Problem',    icon: BookOpen,   shortcut: '2', color: '#4f8ff7' },
+  { key: 'intuition',  label: 'Intuition',  icon: Lightbulb,  shortcut: '3', color: '#fbbf24' },
+  { key: 'steps',      label: 'Steps',      icon: Footprints, shortcut: '4', color: '#a78bfa' },
+  { key: 'algorithm',  label: 'Algorithm',  icon: List,       shortcut: '5', color: '#4f8ff7' },
+  { key: 'code',       label: 'Code',       icon: Code2,      shortcut: '6', color: '#34d399' },
+  { key: 'dryrun',     label: 'Dry Run',    icon: Eye,        shortcut: '7', color: '#a78bfa' },
+  { key: 'notes',      label: 'Notes',      icon: PenTool,    shortcut: '8', color: '#fb923c' },
+  { key: 'complexity', label: 'Complexity', icon: BarChart3,  shortcut: '9', color: '#22d3ee' },
 ];
 
-// ═══ MAIN PROBLEM VIEW ═══
+// ── MAIN ──
 export default function ProblemView({
   problem, onEdit, onStatusChange, onNotesChange,
   onVideoNotesChange, onVideoTimestampChange,
@@ -36,74 +43,65 @@ export default function ProblemView({
   const [solIdx, setSolIdx] = useState(0);
   const [activeTab, setActiveTab] = useState('video');
   const [canvasAPI, setCanvasAPI] = useState(null);
-  const [prevTab, setPrevTab] = useState(null);
-  const [animDir, setAnimDir] = useState('right');
-  const contentRef = useRef(null);
+  const [notesVideoOpen, setNotesVideoOpen] = useState(false);
+  const [notesVideoH, setNotesVideoH] = useState(280);
+  const notesVideoResizing = useRef(false);
 
-  // Reset when problem changes
-  useEffect(() => {
-    setSolIdx(0);
-    setActiveTab('video');
-  }, [problem?.id]);
+  useEffect(() => { setSolIdx(0); setActiveTab('video'); setNotesVideoOpen(false); }, [problem?.id]);
 
-  // Keyboard shortcut: 1-9 for tabs, [ ] for prev/next
+  // Keyboard shortcuts
   useEffect(() => {
     const handler = (e) => {
-      // Don't capture if typing in an input
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
       if (!problem) return;
-
       const num = parseInt(e.key);
-      if (num >= 1 && num <= 9 && num <= TABS.length) {
-        e.preventDefault();
-        switchTab(TABS[num - 1].key);
-        return;
-      }
-      if (e.key === '[') {
-        e.preventDefault();
-        const idx = TABS.findIndex((t) => t.key === activeTab);
-        if (idx > 0) switchTab(TABS[idx - 1].key);
-      }
-      if (e.key === ']') {
-        e.preventDefault();
-        const idx = TABS.findIndex((t) => t.key === activeTab);
-        if (idx < TABS.length - 1) switchTab(TABS[idx + 1].key);
-      }
+      if (num >= 1 && num <= 9 && num <= TABS.length) { e.preventDefault(); switchTab(TABS[num - 1].key); return; }
+      if (e.key === '[') { e.preventDefault(); const i = TABS.findIndex(t => t.key === activeTab); if (i > 0) switchTab(TABS[i-1].key); }
+      if (e.key === ']') { e.preventDefault(); const i = TABS.findIndex(t => t.key === activeTab); if (i < TABS.length-1) switchTab(TABS[i+1].key); }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [activeTab, problem]);
 
-  const switchTab = useCallback((key) => {
-    const oldIdx = TABS.findIndex((t) => t.key === activeTab);
-    const newIdx = TABS.findIndex((t) => t.key === key);
-    setAnimDir(newIdx > oldIdx ? 'right' : 'left');
-    setPrevTab(activeTab);
-    setActiveTab(key);
-  }, [activeTab]);
+  const switchTab = useCallback((key) => { setActiveTab(key); }, []);
 
-  // ═══ EMPTY STATE ═══
+  // Video resize in notes tab
+  const onNotesVideoResizeStart = (e) => {
+    e.preventDefault();
+    notesVideoResizing.current = true;
+    const startY = e.clientY, startH = notesVideoH;
+    const onMove = (ev) => { if (notesVideoResizing.current) setNotesVideoH(Math.max(140, Math.min(520, startH + ev.clientY - startY))); };
+    const onUp = () => { notesVideoResizing.current = false; window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+
+  // ── EMPTY STATE ──
   if (!problem) {
     return (
-      <div className="flex-1 flex items-center justify-center text-ink-4">
-        <div className="text-center">
-          <div className="w-24 h-24 rounded-2xl flex items-center justify-center mx-auto mb-6"
-            style={{ background: 'linear-gradient(135deg, rgba(79,143,247,0.06), rgba(167,139,250,0.06))' }}>
-            <Sparkles size={36} className="opacity-25" />
+      <div className="flex-1 flex items-center justify-center" style={{ background: '#0c0c10' }}>
+        <div style={{ textAlign: 'center', maxWidth: 360 }}>
+          <div style={{
+            width: 96, height: 96, borderRadius: 24, margin: '0 auto 24px',
+            background: 'linear-gradient(135deg, rgba(79,143,247,0.08), rgba(167,139,250,0.08))',
+            border: '1px solid rgba(79,143,247,0.1)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <Sparkles size={38} style={{ color: '#4f8ff7', opacity: 0.4 }} />
           </div>
-          <div className="text-xl text-ink-3 font-bold mb-2" style={{ letterSpacing: '-0.02em' }}>DSA Studio</div>
-          <div className="text-sm text-ink-4 mb-6 max-w-xs mx-auto leading-relaxed">
-            Select a problem from the sidebar to start studying. Use keyboard shortcuts for fast navigation.
+          <div style={{ fontSize: 22, fontWeight: 800, color: '#e4e4e7', letterSpacing: '-0.03em', marginBottom: 8 }}>
+            DSA Studio
           </div>
-          <div className="flex flex-col gap-2 text-xs text-ink-5">
-            <div className="flex items-center justify-center gap-2">
-              <kbd style={kbdStyle}>1</kbd>-<kbd style={kbdStyle}>9</kbd>
-              <span>Switch tabs</span>
-            </div>
-            <div className="flex items-center justify-center gap-2">
-              <kbd style={kbdStyle}>[</kbd><kbd style={kbdStyle}>]</kbd>
-              <span>Prev / Next tab</span>
-            </div>
+          <div style={{ fontSize: 14, color: '#52525b', marginBottom: 28, lineHeight: 1.7 }}>
+            Select a problem from the sidebar to begin. Keyboard shortcuts available for fast navigation.
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center' }}>
+            {[['1–9', 'Switch tabs'], ['[ ]', 'Prev / Next tab']].map(([k, d]) => (
+              <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#3f3f46' }}>
+                <kbd style={kbdStyle}>{k}</kbd>
+                <span>{d}</span>
+              </div>
+            ))}
           </div>
         </div>
       </div>
@@ -112,30 +110,28 @@ export default function ProblemView({
 
   const solutions = problem.solutions || [];
   const sol = solutions[solIdx];
-  const activeTabObj = TABS.find((t) => t.key === activeTab);
 
   return (
-    <div className="flex-1 flex flex-col min-w-0 overflow-hidden" style={{ background: '#0c0c0f' }}>
-      {/* ─── HEADER BAR ─── */}
+    <div className="flex-1 flex flex-col min-w-0 overflow-hidden" style={{ background: '#0c0c10' }}>
+      {/* ── HEADER ── */}
       <div style={{
-        padding: '12px 24px 0',
-        borderBottom: '1px solid rgba(255,255,255,0.04)',
-        background: 'linear-gradient(180deg, rgba(255,255,255,0.02) 0%, transparent 100%)',
+        padding: '14px 28px 0',
+        borderBottom: '1px solid rgba(255,255,255,0.05)',
+        background: 'linear-gradient(180deg, rgba(255,255,255,0.025) 0%, transparent 100%)',
         flexShrink: 0,
       }}>
-        {/* Problem title row */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+        {/* Title row */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 }}>
             <h1 style={{
-              fontSize: 20, fontWeight: 800, color: '#fafaf9',
-              letterSpacing: '-0.03em', margin: 0, whiteSpace: 'nowrap',
-              overflow: 'hidden', textOverflow: 'ellipsis',
+              fontSize: 22, fontWeight: 800, color: '#fafaf9',
+              letterSpacing: '-0.035em', margin: 0,
+              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
             }}>{problem.name}</h1>
             <DifficultyBadge difficulty={problem.difficulty} />
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-            {/* Quick links */}
-            <div style={{ display: 'flex', gap: 6, marginRight: 8 }}>
+            <div style={{ display: 'flex', gap: 6, marginRight: 6 }}>
               {problem.leetcode_url && (
                 <a href={problem.leetcode_url} target="_blank" rel="noopener noreferrer" style={linkStyle('#fb923c')}>
                   <ExternalLink size={10} /> LC
@@ -158,16 +154,13 @@ export default function ProblemView({
               options={STATUSES.map((s) => ({ value: s.key, label: s.label }))}
             />
             <InterviewTimer />
-            <div style={{ width: 1, height: 20, background: 'rgba(255,255,255,0.06)', margin: '0 4px' }} />
+            <div style={{ width: 1, height: 20, background: 'rgba(255,255,255,0.07)', margin: '0 4px' }} />
             <IconButton icon={Edit2} onClick={onEdit} title="Edit problem" />
           </div>
         </div>
 
-        {/* ─── TAB BAR ─── */}
-        <div style={{
-          display: 'flex', alignItems: 'stretch', gap: 1,
-          marginBottom: -1, // overlap the bottom border
-        }}>
+        {/* TAB BAR */}
+        <div style={{ display: 'flex', alignItems: 'stretch', gap: 1, marginBottom: -1 }}>
           {TABS.map((tab) => {
             const Icon = tab.icon;
             const active = activeTab === tab.key;
@@ -177,25 +170,26 @@ export default function ProblemView({
                 onClick={() => switchTab(tab.key)}
                 title={`${tab.label} (${tab.shortcut})`}
                 style={{
-                  display: 'flex', alignItems: 'center', gap: 6,
-                  padding: '8px 14px', borderRadius: '8px 8px 0 0',
+                  display: 'flex', alignItems: 'center', gap: 7,
+                  padding: '9px 16px', borderRadius: '8px 8px 0 0',
                   border: 'none', cursor: 'pointer', fontFamily: 'inherit',
-                  fontSize: 12.5, fontWeight: active ? 650 : 500,
-                  background: active ? 'rgba(255,255,255,0.04)' : 'transparent',
-                  color: active ? tab.color : '#52525b',
-                  position: 'relative', transition: 'all 0.15s',
+                  fontSize: 13, fontWeight: active ? 700 : 500,
+                  background: active ? 'rgba(255,255,255,0.05)' : 'transparent',
+                  color: active ? tab.color : '#4e4e58',
                   borderBottom: active ? `2px solid ${tab.color}` : '2px solid transparent',
+                  transition: 'all 0.15s',
+                  boxShadow: active ? `0 -1px 0 0 ${tab.color}15 inset` : 'none',
                 }}
-                onMouseEnter={(e) => { if (!active) e.currentTarget.style.color = '#a1a1aa'; }}
-                onMouseLeave={(e) => { if (!active) e.currentTarget.style.color = '#52525b'; }}
+                onMouseEnter={(e) => { if (!active) { e.currentTarget.style.color = '#a1a1aa'; e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; } }}
+                onMouseLeave={(e) => { if (!active) { e.currentTarget.style.color = '#4e4e58'; e.currentTarget.style.background = 'transparent'; } }}
               >
-                <Icon size={13} style={{ opacity: active ? 1 : 0.6 }} />
+                <Icon size={14} style={{ opacity: active ? 1 : 0.55 }} />
                 {tab.label}
                 <span style={{
-                  fontSize: 9, color: active ? tab.color : '#2a2a33',
-                  fontFamily: "'JetBrains Mono', monospace", fontWeight: 700,
+                  fontSize: 10, fontFamily: "'JetBrains Mono', monospace", fontWeight: 700,
                   padding: '1px 4px', borderRadius: 3,
-                  background: active ? `${tab.color}12` : 'transparent',
+                  color: active ? tab.color : '#35353d',
+                  background: active ? `${tab.color}15` : 'transparent',
                   transition: 'all 0.15s',
                 }}>{tab.shortcut}</span>
               </button>
@@ -204,16 +198,16 @@ export default function ProblemView({
         </div>
       </div>
 
-      {/* ─── Solution selector (for relevant tabs) ─── */}
-      {solutions.length > 1 && ['intuition', 'steps', 'algorithm', 'code', 'dryrun'].includes(activeTab) && (
+      {/* Solution selector */}
+      {solutions.length > 1 && ['intuition','steps','algorithm','code','dryrun'].includes(activeTab) && (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 2,
-          padding: '6px 24px',
+          padding: '7px 28px',
           borderBottom: '1px solid rgba(255,255,255,0.04)',
           background: 'rgba(255,255,255,0.015)',
           flexShrink: 0,
         }}>
-          <span style={{ fontSize: 11, color: '#3f3f46', fontWeight: 600, marginRight: 8 }}>APPROACH</span>
+          <span style={{ fontSize: 11, color: '#3f3f46', fontWeight: 700, marginRight: 10, letterSpacing: '0.06em' }}>APPROACH</span>
           {solutions.map((s, i) => {
             const c = APPROACHES[s.approach_type] || APPROACHES.Optimal;
             const active = i === solIdx;
@@ -224,18 +218,13 @@ export default function ProblemView({
                 background: active ? c.bg : 'transparent',
                 border: `1px solid ${active ? c.border : 'transparent'}`,
                 color: active ? c.color : '#52525b',
-                fontSize: 12, fontWeight: active ? 650 : 500,
+                fontSize: 12.5, fontWeight: active ? 700 : 500,
                 cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s',
               }}>
-                <span style={{
-                  width: 7, height: 7, borderRadius: '50%',
-                  background: c.color, opacity: active ? 1 : 0.3,
-                }} />
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: c.color, opacity: active ? 1 : 0.3 }} />
                 {s.approach_type}
                 {s.time_complexity && (
-                  <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, opacity: 0.7 }}>
-                    {s.time_complexity}
-                  </span>
+                  <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, opacity: 0.7 }}>{s.time_complexity}</span>
                 )}
               </button>
             );
@@ -243,13 +232,11 @@ export default function ProblemView({
         </div>
       )}
 
-      {/* ─── TAB CONTENT ─── */}
-      <div ref={contentRef} className="flex-1 overflow-hidden" style={{ position: 'relative' }}>
-        <div className="tab-content-enter" key={activeTab} style={{
-          height: '100%', overflow: 'auto',
-          animation: 'tabFadeIn 0.2s ease-out',
-        }}>
-          {/* VIDEO TAB */}
+      {/* ── TAB CONTENT ── */}
+      <div className="flex-1 overflow-hidden" style={{ position: 'relative' }}>
+        <div className="tab-content-enter" key={activeTab} style={{ height: '100%', overflow: 'auto', animation: 'tabFadeIn 0.18s ease-out' }}>
+
+          {/* VIDEO */}
           {activeTab === 'video' && (
             <VideoPlayer
               url={problem.youtube_url}
@@ -263,22 +250,16 @@ export default function ProblemView({
             />
           )}
 
-          {/* PROBLEM TAB */}
+          {/* PROBLEM */}
           {activeTab === 'problem' && (
-            <div style={{ padding: 28, maxWidth: 900 }}>
+            <div style={{ padding: 32, maxWidth: 920 }}>
               {problem.description && (
-                <ContentSection
-                  icon={BookOpen} iconColor="#4f8ff7" iconBg="rgba(79,143,247,0.1)"
-                  title="Problem Statement"
-                >
+                <ContentSection icon={BookOpen} iconColor="#4f8ff7" iconBg="rgba(79,143,247,0.1)" title="Problem Statement">
                   <MarkdownRenderer content={problem.description} />
                 </ContentSection>
               )}
               {problem.in_depth_explanation && (
-                <ContentSection
-                  icon={Info} iconColor="#22d3ee" iconBg="rgba(34,211,238,0.1)"
-                  title="In-depth Explanation" style={{ marginTop: 24 }}
-                >
+                <ContentSection icon={Info} iconColor="#22d3ee" iconBg="rgba(34,211,238,0.1)" title="In-depth Explanation" style={{ marginTop: 28 }}>
                   <MarkdownRenderer content={problem.in_depth_explanation} />
                 </ContentSection>
               )}
@@ -288,27 +269,23 @@ export default function ProblemView({
             </div>
           )}
 
-          {/* INTUITION TAB */}
+          {/* INTUITION */}
           {activeTab === 'intuition' && (
-            <div style={{ padding: 28, maxWidth: 900 }}>
+            <div style={{ padding: 32, maxWidth: 920 }}>
               {sol?.intuition ? (
                 <ContentSection icon={Lightbulb} iconColor="#fbbf24" iconBg="rgba(251,191,36,0.1)" title="Intuition">
                   <MarkdownRenderer content={sol.intuition} />
                 </ContentSection>
               ) : (
-                <EmptyTabState icon={Lightbulb} message="No intuition written yet" sub={solutions.length === 0 ? "Add a solution first" : "Edit the solution to add intuition"} />
+                <EmptyTabState icon={Lightbulb} message="No intuition written yet" sub={solutions.length === 0 ? 'Add a solution first' : 'Edit the solution to add intuition'} />
               )}
-              {sol?.hints && sol.hints.length > 0 && (
-                <div style={{ marginTop: 24 }}>
-                  <HintsPanel hints={sol.hints} />
-                </div>
-              )}
+              {sol?.hints?.length > 0 && <div style={{ marginTop: 28 }}><HintsPanel hints={sol.hints} /></div>}
             </div>
           )}
 
-          {/* STEPS TAB */}
+          {/* STEPS */}
           {activeTab === 'steps' && (
-            <div style={{ padding: 28, maxWidth: 900 }}>
+            <div style={{ padding: 32, maxWidth: 920 }}>
               {sol?.in_depth_intuition ? (
                 <ContentSection icon={Footprints} iconColor="#a78bfa" iconBg="rgba(167,139,250,0.1)" title="Step-by-Step Walkthrough">
                   <MarkdownRenderer content={sol.in_depth_intuition} />
@@ -319,9 +296,9 @@ export default function ProblemView({
             </div>
           )}
 
-          {/* ALGORITHM TAB */}
+          {/* ALGORITHM */}
           {activeTab === 'algorithm' && (
-            <div style={{ padding: 28, maxWidth: 900 }}>
+            <div style={{ padding: 32, maxWidth: 920 }}>
               {sol?.algorithm ? (
                 <ContentSection icon={List} iconColor="#4f8ff7" iconBg="rgba(79,143,247,0.1)" title="Algorithm">
                   <MarkdownRenderer content={sol.algorithm} />
@@ -332,7 +309,7 @@ export default function ProblemView({
             </div>
           )}
 
-          {/* CODE TAB */}
+          {/* CODE */}
           {activeTab === 'code' && (
             <div style={{ padding: 20, height: '100%', display: 'flex', flexDirection: 'column' }}>
               {sol?.code ? (
@@ -345,7 +322,7 @@ export default function ProblemView({
             </div>
           )}
 
-          {/* DRY RUN TAB */}
+          {/* DRY RUN */}
           {activeTab === 'dryrun' && (
             <div style={{ padding: 20, height: '100%', display: 'flex', flexDirection: 'column' }}>
               {sol?.visualization_html || sol?.code ? (
@@ -364,55 +341,117 @@ export default function ProblemView({
             </div>
           )}
 
-          {/* NOTES TAB — Enhanced with drawing canvas */}
+          {/* NOTES — enhanced with optional video pane */}
           {activeTab === 'notes' && (
-            <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
-              {/* Left: Text notes */}
-              <div style={{ flex: '0 0 45%', display: 'flex', flexDirection: 'column', borderRight: '1px solid rgba(255,255,255,0.04)' }}>
-                <div style={{
-                  padding: '10px 16px', borderBottom: '1px solid rgba(255,255,255,0.04)',
-                  display: 'flex', alignItems: 'center', gap: 8,
-                  background: 'rgba(255,255,255,0.015)',
-                }}>
-                  <PenTool size={13} style={{ color: '#fb923c' }} />
-                  <span style={{ fontSize: 12, fontWeight: 650, color: '#a1a1aa' }}>Text Notes</span>
-                  <span style={{ fontSize: 10, color: '#3f3f46', marginLeft: 'auto' }}>Markdown supported</span>
-                </div>
-                <textarea
-                  value={problem.notes || ''}
-                  onChange={(e) => onNotesChange(e.target.value)}
-                  placeholder="Write notes, patterns, edge cases, mistakes to avoid...&#10;&#10;Tips:&#10;• Use ## for headings&#10;• Use ``` for code blocks&#10;• Use - for bullet points"
-                  style={{
-                    flex: 1, width: '100%', background: 'transparent',
-                    border: 'none', padding: 16, fontSize: 13.5, color: '#b8b8be',
-                    fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-                    resize: 'none', outline: 'none', lineHeight: 1.9,
-                  }}
-                />
-              </div>
+            <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
 
-              {/* Right: Drawing canvas */}
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                <div style={{
-                  padding: '10px 16px', borderBottom: '1px solid rgba(255,255,255,0.04)',
-                  display: 'flex', alignItems: 'center', gap: 8,
-                  background: 'rgba(255,255,255,0.015)',
-                }}>
-                  <Eye size={13} style={{ color: '#a78bfa' }} />
-                  <span style={{ fontSize: 12, fontWeight: 650, color: '#a1a1aa' }}>Drawing Canvas</span>
-                  <span style={{ fontSize: 10, color: '#3f3f46', marginLeft: 'auto' }}>
-                    Draw data structures, dry run traces
-                  </span>
+              {/* Collapsible video panel */}
+              {notesVideoOpen && problem.youtube_url && (
+                <>
+                  <div style={{ flexShrink: 0, height: notesVideoH, background: '#000', position: 'relative' }}>
+                    <iframe
+                      src={`https://www.youtube.com/embed/${getYoutubeId(problem.youtube_url)}?rel=0&modestbranding=1&enablejsapi=1&start=${Math.floor(problem.video_timestamp || 0)}`}
+                      style={{ width: '100%', height: '100%', border: 'none' }}
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                    />
+                    <button
+                      onClick={() => setNotesVideoOpen(false)}
+                      title="Close video"
+                      style={{
+                        position: 'absolute', top: 8, right: 10,
+                        padding: '4px 10px', borderRadius: 7, border: 'none', cursor: 'pointer',
+                        background: 'rgba(0,0,0,0.7)', color: '#a1a1aa', fontSize: 11,
+                        display: 'flex', alignItems: 'center', gap: 4, fontFamily: 'inherit',
+                      }}
+                    >
+                      <X size={11} /> Close
+                    </button>
+                  </div>
+                  {/* Resize handle */}
+                  <div
+                    onMouseDown={onNotesVideoResizeStart}
+                    style={{
+                      height: 8, cursor: 'row-resize', flexShrink: 0,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      borderTop: '1px solid rgba(255,255,255,0.05)',
+                      background: 'rgba(255,255,255,0.01)',
+                    }}
+                  >
+                    <div style={{ width: 32, height: 2, borderRadius: 2, background: 'rgba(255,255,255,0.1)' }} />
+                  </div>
+                </>
+              )}
+
+              {/* Notes + Canvas split */}
+              <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+                {/* Left: Text notes */}
+                <div style={{ flex: '0 0 45%', display: 'flex', flexDirection: 'column', borderRight: '1px solid rgba(255,255,255,0.05)' }}>
+                  <div style={{
+                    padding: '10px 16px', borderBottom: '1px solid rgba(255,255,255,0.05)',
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    background: 'rgba(255,255,255,0.015)', flexShrink: 0,
+                  }}>
+                    <PenTool size={13} style={{ color: '#fb923c' }} />
+                    <span style={{ fontSize: 13, fontWeight: 700, color: '#a1a1aa' }}>Text Notes</span>
+                    <span style={{ fontSize: 10, color: '#3f3f46', marginLeft: 'auto' }}>Markdown</span>
+
+                    {/* Watch video toggle */}
+                    {problem.youtube_url && (
+                      <button
+                        onClick={() => setNotesVideoOpen(!notesVideoOpen)}
+                        title={notesVideoOpen ? 'Hide video' : 'Watch video while noting'}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 5,
+                          padding: '4px 10px', borderRadius: 7, border: 'none', cursor: 'pointer',
+                          background: notesVideoOpen ? 'rgba(248,113,113,0.15)' : 'rgba(248,113,113,0.08)',
+                          color: notesVideoOpen ? '#f87171' : '#71717a',
+                          fontSize: 11, fontWeight: 600, fontFamily: 'inherit',
+                          transition: 'all 0.15s',
+                          boxShadow: notesVideoOpen ? 'inset 0 0 0 1px rgba(248,113,113,0.25)' : 'none',
+                        }}
+                      >
+                        <Video size={11} />
+                        {notesVideoOpen ? 'Hide Video' : 'Watch + Note'}
+                      </button>
+                    )}
+                  </div>
+                  <textarea
+                    value={problem.notes || ''}
+                    onChange={(e) => onNotesChange(e.target.value)}
+                    placeholder="Write notes, patterns, edge cases, mistakes to avoid...&#10;&#10;Tips:&#10;• Use ## for headings&#10;• Use ``` for code blocks&#10;• Use - for bullet points&#10;• Press 'Watch + Note' to watch video here"
+                    style={{
+                      flex: 1, width: '100%', background: 'transparent',
+                      border: 'none', padding: '16px 18px', fontSize: 14, color: '#c4c4c9',
+                      fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+                      resize: 'none', outline: 'none', lineHeight: 2,
+                    }}
+                  />
                 </div>
-                <DSTemplates canvasAPI={canvasAPI} />
-                <div style={{ flex: 1, overflow: 'hidden' }}>
-                  <DrawingCanvas onTemplateReady={setCanvasAPI} />
+
+                {/* Right: Drawing canvas */}
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                  <div style={{
+                    padding: '10px 16px', borderBottom: '1px solid rgba(255,255,255,0.05)',
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    background: 'rgba(255,255,255,0.015)', flexShrink: 0,
+                  }}>
+                    <Eye size={13} style={{ color: '#a78bfa' }} />
+                    <span style={{ fontSize: 13, fontWeight: 700, color: '#a1a1aa' }}>Drawing Canvas</span>
+                    <span style={{ fontSize: 10, color: '#3f3f46', marginLeft: 'auto' }}>
+                      Select tool to move • Insert DS templates below
+                    </span>
+                  </div>
+                  <DSTemplates canvasAPI={canvasAPI} />
+                  <div style={{ flex: 1, overflow: 'hidden' }}>
+                    <DrawingCanvas onTemplateReady={setCanvasAPI} />
+                  </div>
                 </div>
               </div>
             </div>
           )}
 
-          {/* COMPLEXITY TAB */}
+          {/* COMPLEXITY */}
           {activeTab === 'complexity' && (
             <div style={{ overflow: 'auto', height: '100%' }}>
               {solutions.length > 0 ? (
@@ -425,28 +464,29 @@ export default function ProblemView({
         </div>
       </div>
 
-      {/* ─── BOTTOM STATUS BAR ─── */}
+      {/* ── BOTTOM STATUS BAR ── */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '4px 20px',
+        padding: '5px 24px',
         borderTop: '1px solid rgba(255,255,255,0.04)',
-        background: 'rgba(255,255,255,0.015)',
+        background: 'rgba(255,255,255,0.01)',
         flexShrink: 0,
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={{ fontSize: 10, color: '#3f3f46' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <span style={{ fontSize: 11, color: '#3f3f46' }}>
             {solutions.length} solution{solutions.length !== 1 ? 's' : ''}
           </span>
           {sol && (
-            <span style={{ fontSize: 10, color: '#3f3f46' }}>
-              {sol.approach_type} • {sol.time_complexity || '—'} / {sol.space_complexity || '—'}
+            <span style={{ fontSize: 11, color: '#3f3f46' }}>
+              {sol.approach_type} · {sol.time_complexity || '—'} / {sol.space_complexity || '—'}
             </span>
           )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <Keyboard size={10} style={{ color: '#2a2a33' }} />
           <span style={{ fontSize: 10, color: '#2a2a33' }}>
-            Press <strong style={{ color: '#3f3f46' }}>1-9</strong> to switch tabs
+            <strong style={{ color: '#3f3f46' }}>1–9</strong> switch tabs ·{' '}
+            <strong style={{ color: '#3f3f46' }}>[ ]</strong> prev/next
           </span>
         </div>
       </div>
@@ -454,24 +494,24 @@ export default function ProblemView({
   );
 }
 
-// ═══ HELPER COMPONENTS ═══
+// ── Helpers ──
 
 function ContentSection({ icon: Icon, iconColor, iconBg, title, children, style = {} }) {
   return (
     <section style={style}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
         <div style={{
-          width: 34, height: 34, borderRadius: 9,
+          width: 36, height: 36, borderRadius: 10,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           background: iconBg,
         }}>
-          <Icon size={16} style={{ color: iconColor }} />
+          <Icon size={17} style={{ color: iconColor }} />
         </div>
-        <span style={{ fontSize: 16, fontWeight: 750, color: '#fafaf9', letterSpacing: '-0.02em' }}>{title}</span>
+        <span style={{ fontSize: 17, fontWeight: 800, color: '#f0f0f2', letterSpacing: '-0.025em' }}>{title}</span>
       </div>
       <div style={{
-        background: 'rgba(255,255,255,0.02)', borderRadius: 12,
-        border: '1px solid rgba(255,255,255,0.05)', padding: 24,
+        background: 'rgba(255,255,255,0.025)', borderRadius: 14,
+        border: '1px solid rgba(255,255,255,0.06)', padding: '24px 28px',
       }}>
         {children}
       </div>
@@ -483,37 +523,35 @@ function EmptyTabState({ icon: Icon, message, sub }) {
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      height: '100%', minHeight: 400, color: '#2a2a33',
+      height: '100%', minHeight: 400,
     }}>
       <div style={{
-        width: 56, height: 56, borderRadius: 14,
-        background: 'rgba(255,255,255,0.03)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        marginBottom: 14,
+        width: 60, height: 60, borderRadius: 16,
+        background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16,
       }}>
-        <Icon size={24} style={{ opacity: 0.3 }} />
+        <Icon size={26} style={{ opacity: 0.2, color: '#a1a1aa' }} />
       </div>
-      <div style={{ fontSize: 14, fontWeight: 600, color: '#3f3f46', marginBottom: 4 }}>{message}</div>
-      <div style={{ fontSize: 12, color: '#2a2a33' }}>{sub}</div>
+      <div style={{ fontSize: 15, fontWeight: 700, color: '#3f3f46', marginBottom: 6 }}>{message}</div>
+      <div style={{ fontSize: 13, color: '#2a2a33' }}>{sub}</div>
     </div>
   );
 }
 
-// Styles
 const kbdStyle = {
   display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-  padding: '2px 6px', borderRadius: 4,
-  background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)',
-  color: '#71717a', fontSize: 10, fontFamily: "'JetBrains Mono', monospace",
-  fontWeight: 700, minWidth: 20,
+  padding: '3px 8px', borderRadius: 5,
+  background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
+  color: '#71717a', fontSize: 11, fontFamily: "'JetBrains Mono', monospace",
+  fontWeight: 700, minWidth: 24,
 };
 
 function linkStyle(color) {
   return {
     display: 'inline-flex', alignItems: 'center', gap: 4,
-    fontSize: 11, color, textDecoration: 'none', fontWeight: 600,
-    padding: '3px 8px', borderRadius: 5,
-    background: `${color}12`, border: `1px solid ${color}20`,
+    fontSize: 11, color, textDecoration: 'none', fontWeight: 700,
+    padding: '4px 9px', borderRadius: 6,
+    background: `${color}12`, border: `1px solid ${color}22`,
     transition: 'all 0.15s',
   };
 }
